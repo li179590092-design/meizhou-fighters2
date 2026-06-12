@@ -99,7 +99,9 @@ canvas{display:block;background:#000;}
   <div class="helpbox">
     <b>移动</b>：◀ ▶ 移动 · ⤒ 跳跃 · 🛡 防御（按住，减伤80%） · 💨 闪避（短暂无敌）<br>
     <b>普攻</b>：👊 连按出三连段拳 · 💥 重拳浮空 · 🦶 突进飞踢<br>
-    <b>技能</b>：⚡ 气功波（远程飞行道具！） · 🌀 罗一帅=雷光升龙 / 杨二帅=围龙旋风腿（多段）<br>
+    <b>五行功法</b>：每按一次施放一种功法并自动轮转下一种——<br>
+    🔥 <span style="color:#ff5a2a">烈焰诀</span>（命中点燃灼烧掉血） · ❄️ <span style="color:#5bd9ff">寒冰诀</span>（冰封定身） · ⚡ <span style="color:#c07bff">雷霆诀</span>（极速雷击麻痹） · 🌪️ <span style="color:#6dff8e">风刃诀</span>（连射快刃） · 💢 <span style="color:#ffd23a">金刚诀</span>（重击破防）<br>
+    <b>绝技</b>：🌀 罗一帅=雷光升龙（带雷电柱） / 杨二帅=围龙旋风腿（火焰旋风多段）<br>
     <b>大招</b>：能量满 100 触发终极必杀——全屏特效 + 角色特写运镜<br>
     <b>连击</b>：连续命中触发 Good! / Great! / Excellent! / Super Combo!<br>
     <b>规则</b>：99 秒一局，三局两胜；血量归零判负，时间到血多者胜<br>
@@ -125,10 +127,12 @@ canvas{display:block;background:#000;}
     <div class="pcard" id="pc2"><img id="pc2f"><div class="fname fn2">杨二帅<br><span style="font-size:11px;color:#e8a88f">(挑战者)</span></div><div class="st" id="pc2s">等待加入…</div></div>
   </div>
   <div class="note" style="user-select:text;-webkit-user-select:text;color:#9fd4ff;word-break:break-all;background:rgba(0,0,40,.5);padding:8px 14px;border-radius:8px;border:1px dashed #4aa8ff;max-width:90vw;" id="roomLink">链接生成中…</div>
+  <div class="hide" style="background:#fff;padding:8px;border-radius:10px;line-height:0;"><img id="roomQR" style="width:min(34vw,150px);height:min(34vw,150px);display:block;"></div>
+  <div class="note" style="color:#9fd4ff;">📷 好友打开微信「扫一扫」，扫码直接进房间</div>
   <button class="btn gold" id="btnShareRoom">📤 分享/复制邀请链接</button>
   <button class="btn hide" id="btnReady">✅ 准备！</button>
   <button class="btn ghost" id="btnRoomBack">离开房间</button>
-  <div class="note">把链接发到微信，好友点开即可进入本房间（无需同一WiFi）</div>
+  <div class="note">三种邀请方式：①好友微信扫上方二维码 ②复制链接发微信 ③报房间号让好友输入<br>无需同一WiFi，跨城市也能打</div>
 </div>
 
 <div class="scr hide" id="scrRes">
