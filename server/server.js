@@ -1,93 +1,137 @@
-/* 梅开格斗：开放之战 —— 联机服务端
- * Express 提供静态页面，Socket.IO 提供房间与战斗状态同步。
- * 房间逻辑：2 名玩家，房主=罗一帅(P1)，加入者=杨二帅(P2)。
+/* 梅开格斗：开放之战 —— 联机服务器
+ * 功能：静态托管游戏页面 + Socket.IO 房间中继 + 邀请二维码生成
  */
 const path = require("path");
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const QRCode = require("qrcode");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: { origin: "*" },
+  pingInterval: 10000,
+  pingTimeout: 20000
+});
 
 app.use(express.static(path.join(__dirname, "..", "public")));
-app.get("/healthz", (_, res) => res.send("ok"));
 
-/* ---------------- 房间管理 ---------------- */
-const rooms = new Map(); // roomId -> { players: [socketId, socketId?], ready: Set, started: bool }
+app.get("/healthz", (req, res) => res.type("text").send("ok"));
 
-function genRoomId() {
-  let id;
-  do {
-    id = Math.random().toString(36).slice(2, 6).toUpperCase()
-      .replace(/0/g, "X").replace(/O/g, "Y").replace(/1/g, "Z").replace(/I/g, "W");
-  } while (rooms.has(id));
-  return id;
+// 邀请链接二维码：/qr?t=<url>
+app.get("/qr", async (req, res) => {
+  try {
+    const text = String(req.query.t || "").slice(0, 300);
+    if (!text) return res.status(400).send("missing t");
+    const png = await QRCode.toBuffer(text, {
+      type: "png", width: 320, margin: 1,
+      color: { dark: "#1a1040", light: "#ffffff" }
+    });
+    res.set("Content-Type", "image/png");
+    res.set("Cache-Control", "public, max-age=3600");
+    res.send(png);
+  } catch (e) {
+    res.status(500).send("qr error");
+  }
+});
+
+/* ---------------- 房间逻辑 ---------------- */
+const rooms = new Map(); // roomId -> {p1, p2, ready1, ready2}
+const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // 去掉易混淆字符
+
+function newRoomId() {
+  for (let tries = 0; tries < 50; tries++) {
+    let id = "";
+    for (let i = 0; i < 4; i++) id += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+    if (!rooms.has(id)) return id;
+  }
+  return String(Date.now()).slice(-6);
+}
+
+function peerOf(room, socket) {
+  if (!room) return null;
+  return room.p1 === socket ? room.p2 : room.p1;
 }
 
 io.on("connection", (socket) => {
-  let myRoom = null;
+  socket.data.roomId = null;
 
   socket.on("createRoom", (cb) => {
-    const id = genRoomId();
-    rooms.set(id, { players: [socket.id], ready: new Set(), started: false });
-    myRoom = id;
-    socket.join(id);
-    cb && cb({ ok: true, roomId: id, seat: 1 });
+    if (typeof cb !== "function") return;
+    leaveCurrentRoom(socket);
+    const roomId = newRoomId();
+    rooms.set(roomId, { p1: socket, p2: null, ready1: false, ready2: false });
+    socket.data.roomId = roomId;
+    socket.data.seat = 1;
+    cb({ ok: true, roomId, seat: 1 });
+    socket.emit("roomUpdate", { count: 1 });
   });
 
-  socket.on("joinRoom", (roomId, cb) => {
-    roomId = String(roomId || "").trim().toUpperCase();
-    const r = rooms.get(roomId);
-    if (!r) return cb && cb({ ok: false, err: "房间不存在或已关闭" });
-    if (r.players.length >= 2) return cb && cb({ ok: false, err: "房间已满" });
-    r.players.push(socket.id);
-    myRoom = roomId;
-    socket.join(roomId);
-    cb && cb({ ok: true, roomId, seat: 2 });
-    io.to(roomId).emit("roomUpdate", { count: r.players.length });
+  socket.on("joinRoom", (code, cb) => {
+    if (typeof cb !== "function") return;
+    const roomId = String(code || "").trim().toUpperCase();
+    const room = rooms.get(roomId);
+    if (!room) return cb({ ok: false, msg: "房间不存在，请确认房间号（区分0和O哦）" });
+    if (room.p2) return cb({ ok: false, msg: "房间已满，两位选手已就位" });
+    if (room.p1 === socket) return cb({ ok: false, msg: "您已是本房间房主" });
+    leaveCurrentRoom(socket);
+    room.p2 = socket;
+    socket.data.roomId = roomId;
+    socket.data.seat = 2;
+    cb({ ok: true, roomId, seat: 2 });
+    if (room.p1) room.p1.emit("roomUpdate", { count: 2 });
+    socket.emit("roomUpdate", { count: 2 });
   });
 
-  socket.on("ready", (isReady) => {
-    const r = rooms.get(myRoom);
-    if (!r) return;
-    if (isReady) r.ready.add(socket.id); else r.ready.delete(socket.id);
-    io.to(myRoom).emit("readyState", {
-      readyCount: r.ready.size,
-      youReady: undefined
-    });
-    if (r.players.length === 2 && r.ready.size === 2 && !r.started) {
-      r.started = true;
-      io.to(myRoom).emit("startGame", { t: Date.now() });
+  socket.on("ready", () => {
+    const room = rooms.get(socket.data.roomId);
+    if (!room) return;
+    if (socket.data.seat === 1) room.ready1 = true; else room.ready2 = true;
+    const state = { p1: room.ready1, p2: room.ready2 };
+    if (room.p1) room.p1.emit("readyState", state);
+    if (room.p2) room.p2.emit("readyState", state);
+    if (room.ready1 && room.ready2 && room.p1 && room.p2) {
+      room.ready1 = false; room.ready2 = false; // 为再战复位
+      room.p1.emit("startGame");
+      room.p2.emit("startGame");
     }
   });
 
-  /* 战斗数据透传：位置 / 动作 / 命中 / 血量 / 回合 / 重赛 */
-  socket.on("data", (payload) => {
-    if (myRoom) socket.to(myRoom).emit("data", payload);
+  // 对战数据中继（状态/受击/弹道/特效等）
+  socket.on("data", (msg) => {
+    const peer = peerOf(rooms.get(socket.data.roomId), socket);
+    if (peer) peer.emit("data", msg);
   });
 
   socket.on("rematch", () => {
-    const r = rooms.get(myRoom);
-    if (!r) return;
-    r.ready = new Set();
-    r.started = false;
-    socket.to(myRoom).emit("rematchAsk");
+    const room = rooms.get(socket.data.roomId);
+    if (!room) return;
+    room.ready1 = false; room.ready2 = false;
+    const peer = peerOf(room, socket);
+    if (peer) peer.emit("rematchAsk");
   });
 
-  socket.on("disconnect", () => {
-    const r = rooms.get(myRoom);
-    if (!r) return;
-    r.players = r.players.filter((p) => p !== socket.id);
-    r.ready.delete(socket.id);
-    if (r.players.length === 0) rooms.delete(myRoom);
-    else {
-      r.started = false;
-      io.to(myRoom).emit("peerLeft");
-    }
-  });
+  socket.on("disconnect", () => leaveCurrentRoom(socket));
+
+  function leaveCurrentRoom(s) {
+    const roomId = s.data.roomId;
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    s.data.roomId = null;
+    if (!room) return;
+    const peer = peerOf(room, s);
+    if (room.p1 === s) room.p1 = null;
+    if (room.p2 === s) room.p2 = null;
+    if (peer) peer.emit("peerLeft");
+    if (!room.p1 && !room.p2) rooms.delete(roomId);
+  }
 });
 
+// 空房间定期清理（保险）
+setInterval(() => {
+  for (const [id, r] of rooms) if (!r.p1 && !r.p2) rooms.delete(id);
+}, 60000);
+
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("梅开格斗服务已启动: http://localhost:" + PORT));
+server.listen(PORT, () => console.log("梅开格斗服务已启动，端口 " + PORT));
