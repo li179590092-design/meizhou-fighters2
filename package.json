@@ -1,0 +1,14 @@
+{
+  "name": "meizhou-fighters",
+  "version": "1.0.0",
+  "description": "梅开格斗：开放之战 - Meizhou Open University Fighters",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
