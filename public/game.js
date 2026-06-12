@@ -151,8 +151,10 @@ function hostRoom(){
   s.emit("createRoom",res=>{
     if(!res||!res.ok){toast("创建房间失败，请重试");return;}
     roomId=res.roomId;mySeat=res.seat||1;online=true;inRoom=true;
+    try{history.replaceState(null,"",location.pathname+"?room="+roomId);}catch(e){}
     showScr("scrRoom");
     document.getElementById("roomCode").textContent=roomId;
+    document.getElementById("roomLink").textContent=location.origin+location.pathname+"?room="+roomId;
     document.getElementById("pc1s").textContent="已就位";
     document.getElementById("pc2s").textContent="等待加入…";
     resetReadyUI();
@@ -164,8 +166,10 @@ function joinRoom(code){
   s.emit("joinRoom",code,res=>{
     if(!res||!res.ok){toast(res&&res.msg?res.msg:"没有找到该房间，请确认房间号");return;}
     roomId=res.roomId;mySeat=res.seat||2;online=true;inRoom=true;
+    try{history.replaceState(null,"",location.pathname+"?room="+roomId);}catch(e){}
     showScr("scrRoom");
     document.getElementById("roomCode").textContent=roomId;
+    document.getElementById("roomLink").textContent=location.origin+location.pathname+"?room="+roomId;
     document.getElementById("pc1s").textContent="房主已就位";
     document.getElementById("pc2s").textContent="已加入！";
     resetReadyUI();
@@ -182,11 +186,35 @@ function resetReadyUI(){
   b.classList.toggle("hide",mySeat===1);
 }
 function send(o){if(online&&socket)try{socket.emit("data",o);}catch(e){}}
+function isWeChat(){return /MicroMessenger/i.test(navigator.userAgent);}
+function copyText(txt,okMsg){
+  // layered copy: async clipboard -> execCommand textarea -> manual hint
+  function legacy(){
+    try{
+      const ta=document.createElement("textarea");
+      ta.value=txt;ta.style.cssText="position:fixed;top:-999px;opacity:0";ta.setAttribute("readonly","");
+      document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,99999);
+      const ok=document.execCommand("copy");document.body.removeChild(ta);
+      return ok;
+    }catch(e){return false;}
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(()=>toast(okMsg))
+      .catch(()=>{legacy()?toast(okMsg):toast("复制失败：请长按上方蓝色链接手动复制");});
+  } else {
+    legacy()?toast(okMsg):toast("复制失败：请长按上方蓝色链接手动复制");
+  }
+}
 function shareRoom(){
   const url=location.origin+location.pathname+"?room="+roomId;
-  const data={title:"梅开格斗：开放之战",text:"我在梅州开放大学·荣耀擂台等你！房间号 "+roomId+"，微信点开即可加入对战！",url};
-  if(navigator.share){navigator.share(data).catch(()=>{});}
-  else{try{navigator.clipboard.writeText(data.text+" "+url);}catch(e){}toast("邀请链接已复制，去微信粘贴给好友吧！");}
+  const txt="我在梅州开放大学·荣耀擂台等你！房间号 "+roomId+"，点开即加入对战！ "+url;
+  if(isWeChat()){
+    copyText(txt,"链接已复制！也可点微信右上角「…」→发送给朋友");
+    return;
+  }
+  if(navigator.share){
+    navigator.share({title:"梅开格斗：开放之战",text:txt,url}).catch(()=>copyText(txt,"邀请链接已复制，去微信粘贴给好友吧！"));
+  } else copyText(txt,"邀请链接已复制，去微信粘贴给好友吧！");
 }
 function onNet(m){
   if(!m||!m.t)return;
@@ -870,7 +898,7 @@ document.getElementById("btnReady").onclick=()=>{
 };
 document.getElementById("btnRoomBack").onclick=()=>{
   if(socket){try{socket.disconnect();}catch(e){}socket=null;}
-  online=false;inRoom=false;netStat("",false);showScr("scrMenu");
+  online=false;inRoom=false;netStat("",false);try{history.replaceState(null,"",location.pathname);}catch(e){}showScr("scrMenu");
 };
 document.getElementById("btnAgain").onclick=()=>{
   SFX.click();
@@ -886,13 +914,13 @@ document.getElementById("btnAgain").onclick=()=>{
 };
 document.getElementById("btnMenu2").onclick=()=>{
   if(socket){try{socket.disconnect();}catch(e){}socket=null;}
-  online=false;inRoom=false;netStat("",false);showScr("scrMenu");
+  online=false;inRoom=false;netStat("",false);try{history.replaceState(null,"",location.pathname);}catch(e){}showScr("scrMenu");
 };
 document.getElementById("btnShare2").onclick=()=>{
   const url=location.origin+location.pathname;
-  const data={title:"梅开格斗：开放之战",text:"我刚在梅州开放大学·荣耀擂台打出 "+stats.maxCombo+" 连击！罗一帅 VS 杨二帅，敢来挑战吗？",url};
-  if(navigator.share){navigator.share(data).catch(()=>{});}
-  else{try{navigator.clipboard.writeText(data.text+" "+url);}catch(e){}toast("战绩已复制，去微信粘贴吧！");}
+  const txt="我刚在梅州开放大学·荣耀擂台打出 "+stats.maxCombo+" 连击！罗一帅 VS 杨二帅，敢来挑战吗？ "+url;
+  if(!isWeChat()&&navigator.share){navigator.share({title:"梅开格斗：开放之战",text:txt,url}).catch(()=>copyText(txt,"战绩已复制，去微信粘贴吧！"));}
+  else copyText(txt,"战绩已复制，去微信粘贴吧！");
 };
 
 /* loading + ?room= auto join */
