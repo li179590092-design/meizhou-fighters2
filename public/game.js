@@ -91,8 +91,19 @@ const SFX={
  lose:()=>[392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,0.3,"triangle",0.15),i*160)),
  count:()=>tone(880,0.1,"square",0.14),
  cheer:()=>{noise(0.35,0.05,1800);[880,990,1175].forEach((f,i)=>setTimeout(()=>tone(f,0.1,"sine",0.045),i*60));},
- combo:()=>[660,880,1100].forEach((f,i)=>setTimeout(()=>tone(f,0.08,"square",0.1),i*50))
+ combo:()=>[660,880,1100].forEach((f,i)=>setTimeout(()=>tone(f,0.08,"square",0.1),i*50)),
+ whoosh:()=>{noise(0.05,0.06,2200);tone(640,0.05,"sine",0.05,1300);},
+ whooshHeavy:()=>{noise(0.09,0.09,900);tone(190,0.08,"sine",0.07,520);},
+ swoop:()=>{tone(720,0.16,"sine",0.06,170);noise(0.06,0.05,1500);},
+ grab:()=>{tone(160,0.05,"square",0.1,90);noise(0.04,0.08,1800);},
+ slam:()=>{noise(0.18,0.3,500);tone(90,0.2,"sawtooth",0.2,45);},
+ castFire:()=>{tone(360,0.2,"sawtooth",0.11,140);noise(0.13,0.09,700);},
+ castIce:()=>{tone(900,0.24,"sine",0.09,420);noise(0.1,0.05,3000);},
+ castBolt:()=>{noise(0.05,0.14,2600);tone(240,0.16,"square",0.11,1200);},
+ castWind:()=>{noise(0.2,0.07,1500);tone(540,0.14,"triangle",0.07,260);},
+ castGold:()=>{tone(300,0.18,"square",0.11,520);tone(150,0.14,"sawtooth",0.11,70);}
 };
+const CASTSFX=["castFire","castIce","castBolt","castWind","castGold"];
 const MELODY=[262,330,392,330,440,392,494,392,262,330,392,523,494,440,392,330];
 function startMusic(){if(!soundOn||!AC||musicTimer)return;let i=0;
  musicTimer=setInterval(()=>{if(!soundOn)return;const f=MELODY[i%MELODY.length];
@@ -111,7 +122,7 @@ document.querySelectorAll(".cbtn").forEach(b=>{
   b.addEventListener("touchcancel",up,{passive:false});
   b.addEventListener("mousedown",dn);b.addEventListener("mouseup",up);b.addEventListener("mouseleave",up);
 });
-const KEYMAP={a:"L",d:"R",w:"U",s:"B",q:"DG",j:"LP",k:"HP",l:"KK",u:"S1",i:"S2",o:"ULT"};
+const KEYMAP={a:"L",d:"R",w:"U",s:"B",q:"DG",j:"LP",k:"HP",l:"KK",u:"S1",i:"S2",o:"ULT",c:"CR",arrowleft:"L",arrowright:"R",arrowup:"U",arrowdown:"CR"," ":"U"};
 addEventListener("keydown",e=>{const m=KEYMAP[e.key.toLowerCase()];if(m){if(!keys[m])keyEdge[m]=true;keys[m]=true;e.preventDefault();resumeAudio();}});
 addEventListener("keyup",e=>{const m=KEYMAP[e.key.toLowerCase()];if(m)keys[m]=false;});
 
@@ -242,7 +253,7 @@ function onNet(m){
 /* ================= GAME STATE ================= */
 let mode="solo",inBattle=false,raf=null,lastT=0,frame=0;
 let me=null,foe=null,timer=99,tAcc=0,roundN=1,wins=[0,0],paused=0,hitstop=0,slowmo=0;
-let fxList=[],projs=[],shake=0,bann=null,flash=0,cine=null,sendAcc=0,zoom=0;
+let fxList=[],projs=[],shake=0,bann=null,flash=0,cine=null,sendAcc=0,zoom=0,tint=null;
 let stats={dmg:0,maxCombo:0};
 let cheerGirls=[];
 
@@ -253,6 +264,8 @@ function mkF(ci,x,facing,local){
    cdS1:0,cdS2:0,cdDG:0,combo:0,comboT:0,bubble:"",bubT:0,
    elemIdx:0,burnT:0,burnAcc:0,frozenT:0,auraAcc:0,ghostAcc:0,
    cancelT:0,juggleN:0,winT:0,walkPh:0,moveAmt:0,lastX:x,rushT:0,rushAcc:0,rushHits:0,rushFin:false,s1Boost:false,
+   flapX:0,flapV:0,bandX:0,bandV:0,hitLean:0,hitLeanV:0,landSquash:0,
+   crouch:false,airUsed:false,
    nx:x,ny:GROUND,nf:facing,koT:0};
 }
 function myCharIndex(){return mode==="online"?(mySeat===1?0:1):0;}
@@ -269,7 +282,7 @@ function beginBattle(m){
   if(!raf){lastT=performance.now();raf=requestAnimationFrame(loop);}
 }
 function setupRound(n){
-  roundN=n;timer=99;tAcc=0;fxList=[];projs=[];ghosts=[];shake=0;flash=0;cine=null;hitstop=0;slowmo=0;paused=0;zoom=0;
+  roundN=n;timer=99;tAcc=0;fxList=[];projs=[];ghosts=[];shake=0;flash=0;cine=null;hitstop=0;slowmo=0;paused=0;zoom=0;tint=null;
   const mi=myCharIndex();
   me=mkF(mi, mi===0?VW*0.27:VW*0.73, mi===0?1:-1,true);
   foe=mkF(1-mi, mi===0?VW*0.73:VW*0.27, mi===0?-1:1,false);
@@ -333,6 +346,8 @@ function dmgText(x,y,v,crit){fxList.push({t:"d",x,y,v:"-"+v,life:780,crit});}
 function starFx(x,y,col){fxList.push({t:"s",x,y,vx:(Math.random()-0.5)*8,vy:-Math.random()*10-2,rot:Math.random()*6,life:660,col:col||"#ffd23a"});}
 function dust(x,y,n){n=n||6;for(let i=0;i<n;i++)fxList.push({t:"u",x:x+(Math.random()-0.5)*26,y,vx:(Math.random()-0.5)*3,vy:-Math.random()*2,life:380});}
 function slash(x,y,dir,col){fxList.push({t:"sl",x,y,dir,life:240,col});}
+function impactFlash(x,y,col,big){fxList.push({t:"fl",x,y,r:big?72:44,max:big?260:190,life:big?260:190,col:col||"#ffffff"});}
+function setTint(col,peak,ms){tint={col,peak:peak||0.3,max:ms||360,life:ms||360};}
 function remoteFx(m){
   if(m.k==="spark")spark(m.x,m.y,m.c,m.n);
   else if(m.k==="cine")startCine(CHARS[m.ci],false);
@@ -343,6 +358,10 @@ function remoteFx(m){
 
 /* ================= PROJECTILES ================= */
 function spawnProj(owner,kind,visualOnly,x,y,dir,el){
+  if(!visualOnly){const _E=(kind==="el")?ELEMS[el||0]:null;const _c=_E?_E.col:(CHARS[owner.ci].main);
+    impactFlash(owner.x+owner.facing*70,owner.y-96,_c,kind==="ult");
+    if(_E&&owner.local)setTint(_E.col,0.26,300);
+    if(kind==="el"&&owner.local&&typeof CASTSFX!=="undefined")SFX[CASTSFX[el||0]]();}
   const c=CHARS[owner.ci];
   const E=(kind==="el")?ELEMS[el||0]:null;
   const p={owner,ci:owner.ci,kind,el:el||0,visual:!!visualOnly,
@@ -368,6 +387,7 @@ function elemOnHitFx(p,tx,ty){
   const E=p.kind==="ult"?null:ELEMS[p.el||0];
   const col=E?E.col:CHARS[p.ci].main;
   shockwave(tx,ty,col);
+  impactFlash(tx,ty,col,true);
   spark(tx,ty,E?E.spark:"#fff",16);
   if(E){
     if(E.id==="bolt")lightningFx(tx,0,ty,E.col);
@@ -486,7 +506,12 @@ const MOVES={
  SHO:{dmg:14,dur:420,hitAt:120,range:70,stun:520,kb:5,vy:-11,sfx:"shoryu",lean:-0.2,rise:true},
  SPIN:{dmg:4,dur:520,hitAt:100,range:80,stun:200,kb:4,vy:-2,dash:9,sfx:"spin",lean:0.1,multi:3},
  CAST:{dmg:0,dur:380,hitAt:9999,range:0,stun:0,kb:0,vy:0,sfx:"fire",lean:0.2,lunge:6},
- ULTM:{dmg:0,dur:600,hitAt:9999,range:0,stun:0,kb:0,vy:0,sfx:"ultBoom",lean:0.3}
+ ULTM:{dmg:0,dur:600,hitAt:9999,range:0,stun:0,kb:0,vy:0,sfx:"ultBoom",lean:0.3},
+ LOWP:{dmg:4,dur:150,hitAt:65,range:62,stun:200,kb:2,vy:0,sfx:"punch",lean:0.1,lunge:6,low:true},
+ SWEEP:{dmg:8,dur:300,hitAt:120,range:96,stun:460,kb:6,vy:0,sfx:"kick",lean:0.18,lunge:14,low:true,knockdown:true,cool:480},
+ DASHP:{dmg:11,dur:330,hitAt:130,range:90,stun:400,kb:9,vy:-3,sfx:"heavy",lean:0.3,dash:11,lunge:22,cool:540},
+ DIVE:{dmg:10,dur:300,hitAt:55,range:80,stun:360,kb:5,vy:1,sfx:"kick",lean:0.18,lunge:10,air:true},
+ THROW:{dmg:14,dur:360,hitAt:115,range:62,stun:620,kb:13,vy:-7,sfx:"heavy",lean:0.18,thr:true,cool:620}
 };
 function curMove(f){return MOVES[f.atkType]||MOVES.LP1;}
 function startMove(f,type){
@@ -494,11 +519,27 @@ function startMove(f,type){
   f.atkType=type;f.atk=mv.dur;f.atkDur=mv.dur;f.hitDone=false;f.hitN=0;
   if(mv.dash)f.dash=f.facing*mv.dash;
   if(mv.rise&&f.onG){f.vy=-12.5;f.onG=false;}
-  if(f.local){SFX[mv.sfx]();if(mode==="online")send({t:"fx",k:"sfx",n:mv.sfx});}
+  if(f.local){
+    if(type!=="CAST"&&type!=="ULTM"){
+      const hv=(type==="HP"||type==="DASHP"||type==="SWEEP"||type==="SHO"||type==="THROW"||type==="KK");
+      (hv?SFX.whooshHeavy:SFX.whoosh)();
+    }
+    SFX[mv.sfx]();if(mode==="online")send({t:"fx",k:"sfx",n:mv.sfx});
+  }
 }
 function tryAction(f,key){
-  if(f.stun>0||f.frozenT>0||f.blocking||f.koT)return;
+  if(f.stun>0||f.frozenT>0||f.koT)return;
+  if(key==="THROWC"){if(f.blocking||!f.onG||f.atk>0||f.cool>0)return;f.cool=MOVES.THROW.cool;startMove(f,"THROW");return;}
+  if(key==="DASHPC"){if(f.blocking||f.atk>0||f.cool>0||!f.onG)return;f.cool=MOVES.DASHP.cool;startMove(f,"DASHP");return;}
+  if(f.blocking)return;
   const c=CHARS[f.ci];
+  if(!f.onG&&(key==="LP"||key==="HP"||key==="KK")){
+    if(f.atk>0||f.airUsed)return;f.airUsed=true;startMove(f,"DIVE");return;
+  }
+  if(f.crouch&&f.onG&&f.atk<=0){
+    if(key==="LP"){if(f.cool>0)return;f.cool=200;startMove(f,"LOWP");return;}
+    if(key==="KK"){if(f.cool>0)return;f.cool=MOVES.SWEEP.cool;startMove(f,"SWEEP");dust(f.x,GROUND,5);return;}
+  }
   if(key==="LP"){
     if(f.atk>0){ // chain window
       if(f.chain<2&&f.atk<f.atkDur*0.55&&(f.atkType==="LP1"||f.atkType==="LP2")){f.chain++;startMove(f,"LP"+(f.chain+1));}
@@ -508,7 +549,7 @@ function tryAction(f,key){
   }
   // 连招取消：命中后380ms窗口内可衔接更高阶招式（普攻→重击→特殊技→超必杀）
   if(f.atk>0){
-    const RANK={LP1:1,LP2:1,LP3:2,HP:3,KK:3,CAST:4,SHO:4,SPIN:4,ULTM:9};
+    const RANK={LP1:1,LP2:1,LP3:2,LOWP:1,SWEEP:2,DASHP:3,DIVE:2,HP:3,KK:3,CAST:4,SHO:4,SPIN:4,THROW:9,ULTM:9};
     const TGT={HP:3,KK:3,S1:4,S2:4,ULT:9}[key]||0;
     const cr=RANK[f.atkType]||9;
     if(!(f.cancelT>0&&TGT>cr))return;
@@ -587,13 +628,18 @@ function meleeCheck(f,o){
 function tryLand(f,o,mv,multi){
   const dx=(o.x-f.x)*f.facing;
   const inY=Math.abs((o.y-86)-(f.y-86))<108;
+  if(mv.thr&&!o.onG)return;
   if(dx>-16&&dx<mv.range&&inY&&o.inv<=0){
     if(!multi)f.hitDone=true;
-    const blocked=o.blocking&&(o.facing!==f.facing)&&o.onG;
+    let blocked=o.blocking&&(o.facing!==f.facing)&&o.onG;
+    if(mv.thr)blocked=false;
     let dmg=mv.dmg+Math.floor(Math.random()*2);
     if(f.combo>=3&&!blocked)dmg+=2;
     dealDamage(f,o,dmg,blocked,false,f.facing*mv.kb,mv.vy,blocked?120:mv.stun);
-    f.cancelT=380; // 命中（含被防）开启取消窗口
+    if(!blocked)impactFlash(o.x,o.y-86,(mv.dmg>=10)?"#ffd23a":"#fff",mv.dmg>=10);
+    if(mv.knockdown&&!blocked){o.stun=Math.max(o.stun,mv.stun);o.vy=Math.min(o.vy,-6);o.onG=false;}
+    if(mv.thr&&!blocked){shockwave(o.x,o.y-60,"#ffd23a");shake=Math.max(shake,12);banner("投技！",600,"#ffd23a");}
+    f.cancelT=mv.thr?0:380;
   }
 }
 function dealDamage(f,o,dmg,blocked,isUlt,kbx,kby,stun,el){
@@ -615,7 +661,7 @@ function dealDamage(f,o,dmg,blocked,isUlt,kbx,kby,stun,el){
     hitVisual(o,dmg,blocked,crit,f);
   } else {
     o.hp=Math.max(0,o.hp-dmg);
-    if(!blocked){o.stun=stun;o.vx=kbx;o.vy=kby;o.onG=false;applyElemStatus(o,el===undefined?-1:el);}
+    if(!blocked){o.stun=stun;o.vx=kbx;o.vy=kby;o.onG=false;o.hitLean=Math.max(-0.5,Math.min(0.5,kbx*0.05));o.hitLeanV=0;applyElemStatus(o,el===undefined?-1:el);}
     else o.stun=120;
     hitVisual(o,dmg,blocked,crit,f);
     if(o.hp<=0)roundEnd(f);
@@ -719,6 +765,17 @@ function update(dt){
     if(f.stun>0)f.stun-=dt;
     if(f.cancelT>0)f.cancelT-=dt;
     if(f.winT>0)f.winT-=dt;
+    // ===== 布料物理（弹簧+阻尼，随运动甩动）=====
+    {
+      const sway=Math.sin((performance.now()/1000)*6+f.ci);
+      const lungeC=(f.atk>0)?(curMove(f).lunge||0)*0.5:0;
+      const flapTgt=f.vx*1.7 + f.facing*lungeC*0.4 + sway*2 + (f.rushT>0?-f.facing*9:0);
+      f.flapV=(f.flapV+(flapTgt-f.flapX)*0.22)*0.80; f.flapX+=f.flapV;
+      const bandTgt=-Math.abs(f.vx)*1.3 + f.vy*0.9 + sway*3;
+      f.bandV=(f.bandV+(bandTgt-f.bandX)*0.26)*0.78; f.bandX+=f.bandV;
+      if(f.hitLean){f.hitLeanV=(f.hitLeanV+(0-f.hitLean)*0.2)*0.82; f.hitLean+=f.hitLeanV;}
+      if(f.landSquash>0)f.landSquash-=dt;
+    }
     // 步行动画相位（本机用vx，远端用位移差）
     const mvAmt=(f===me||mode!=="online")?Math.abs(f.vx):Math.abs(f.x-(f.lastX===undefined?f.x:f.lastX));
     f.moveAmt=mvAmt;f.lastX=f.x;
@@ -768,32 +825,41 @@ function update(dt){
     if(f.ghostAcc>45&&(Math.abs(f.dash)>1.5||(f.atk>0&&(f.atkType==="KK"||f.atkType==="SPIN"||f.atkType==="SHO")))){f.ghostAcc=0;pushGhost(f);}
     if(f===me&&!f.koT&&f.rushT<=0){
       if(f.stun<=0&&f.frozenT<=0){
+        f.crouch=!!keys.CR&&f.onG&&f.atk<=0;
         f.blocking=!!keys.B&&f.onG&&f.atk<=0;
         f.vx=0;
-        if(!f.blocking){
+        if(!f.blocking&&!f.crouch){
           if(keys.L){f.vx=-3.9;if(f.atk<=0)f.facing=-1;}
           if(keys.R){f.vx=3.9;if(f.atk<=0)f.facing=1;}
           if(keys.U&&f.onG){f.vy=-13.6;f.onG=false;SFX.jump();dust(f.x,GROUND,4);}
           if(keyEdge.DG&&f.cdDG<=0){f.cdDG=1500;f.inv=Math.max(f.inv,380);f.dash=(keys.L?-1:keys.R?1:f.facing)*10;SFX.dodge();dust(f.x,GROUND,6);}
-          // 搓招检测
+        }
+        if(!f.blocking){
+          // 指令缓存（搓招/双击前冲）
           if(keyEdge.L)cmdBuf.push({k:"L",t:performance.now()});
           if(keyEdge.R)cmdBuf.push({k:"R",t:performance.now()});
           if(keyEdge.B)cmdBuf.push({k:"B",t:performance.now()});
           while(cmdBuf.length&&performance.now()-cmdBuf[0].t>520)cmdBuf.shift();
-          if(keyEdge.LP||keyEdge.HP){
-            const fwd=f.facing>0?"R":"L";
-            const seq=cmdBuf.map(o2=>o2.k).join("");
-            if(seq.endsWith(fwd+"B"+fwd)){banner("搓招！",600,"#7fe27f");tryAction(f,"S2");cmdBuf.length=0;keyEdge.LP=false;keyEdge.HP=false;}
-            else if(seq.endsWith("B"+fwd)){f.s1Boost=true;banner("搓招！功法增幅",700,"#7fe27f");tryAction(f,"S1");cmdBuf.length=0;keyEdge.LP=false;keyEdge.HP=false;}
+          const fwd=f.facing>0?"R":"L";
+          const seq=cmdBuf.map(o2=>o2.k).join("");
+          let consumed=false;
+          // 投技：轻拳+重拳同时
+          if(keyEdge.LP&&keyEdge.HP){tryAction(f,"THROWC");keyEdge.LP=false;keyEdge.HP=false;consumed=true;}
+          // 搓招 →B→ = 绝技 / B→ = 功法增幅
+          else if((keyEdge.LP||keyEdge.HP)&&seq.endsWith(fwd+"B"+fwd)){banner("搓招！绝技",600,"#7fe27f");tryAction(f,"S2");cmdBuf.length=0;keyEdge.LP=false;keyEdge.HP=false;consumed=true;}
+          else if((keyEdge.LP||keyEdge.HP)&&seq.endsWith("B"+fwd)){f.s1Boost=true;banner("搓招！功法增幅",700,"#7fe27f");tryAction(f,"S1");cmdBuf.length=0;keyEdge.LP=false;keyEdge.HP=false;consumed=true;}
+          // 双击前 + 重拳 = 突进重拳
+          else if(keyEdge.HP&&seq.endsWith(fwd+fwd)){tryAction(f,"DASHPC");cmdBuf.length=0;keyEdge.HP=false;consumed=true;}
+          if(!consumed){
+            if(keyEdge.LP)tryAction(f,"LP");
+            if(keyEdge.HP)tryAction(f,"HP");
           }
-          if(keyEdge.LP)tryAction(f,"LP");
-          if(keyEdge.HP)tryAction(f,"HP");
           if(keyEdge.KK)tryAction(f,"KK");
           if(keyEdge.S1)tryAction(f,"S1");
           if(keyEdge.S2)tryAction(f,"S2");
           if(keyEdge.ULT)tryAction(f,"ULT");
         }
-      } else f.blocking=false;
+      } else {f.blocking=false;f.crouch=false;}
     } else if(mode!=="online"&&f===foe){
       aiUpdate(f,o,dt);
     } else if(f===foe){
@@ -806,7 +872,7 @@ function update(dt){
     if(f===me||mode!=="online"){
       f.x+=f.vx;f.y+=f.vy;
       if(!f.onG)f.vy+=0.74;
-      if(f.y>=GROUND){if(!f.onG&&f.vy>6)dust(f.x,GROUND,6);f.y=GROUND;f.vy=0;f.onG=true;f.juggleN=0;}
+      if(f.y>=GROUND){if(!f.onG&&f.vy>6){dust(f.x,GROUND,6);f.landSquash=140;shake=Math.max(shake,Math.min(6,f.vy*0.4));}f.y=GROUND;f.vy=0;f.onG=true;f.juggleN=0;f.airUsed=false;}
       f.x=Math.max(36,Math.min(VW-36,f.x));
     }
   }
@@ -833,6 +899,7 @@ function update(dt){
   if(bann){bann.t-=dt;if(bann.t<=0)bann=null;}
   if(flash>0)flash-=dt;
   if(shake>0)shake*=0.86;
+  if(tint){tint.life-=dt;if(tint.life<=0)tint=null;}
   if(zoom>0)zoom*=0.93;
 }
 
@@ -932,8 +999,14 @@ const ATKPOSE={
  SHO:[[0,PZ(.1,9,.5,1.4,.4,2.1,-.4,.6,.5,.6)],[.4,PZ(-.14,-6,.35,1.4,3.05,.05,.25,.85,.85,1.5)],[1,PG]],
  SPIN:[[0,PG],[.25,PZ(.05,-3,1.5,.3,1.5,.3,.2,1.0,1.45,.06)],[.8,PZ(.05,-3,1.5,.3,1.5,.3,.2,1.0,1.45,.06)],[1,PG]],
  CAST:[[0,PZ(.06,1,.55,2.25,.6,2.2,-.3,.3,.22,.14)],[.5,PZ(.2,0,1.5,.08,1.55,.06,-.36,.32,.34,.1)],[1,PG]],
- ULTM:[[0,PZ(.12,5,.35,1.7,.3,1.75,-.4,.5,.4,.45)],[1,PZ(.12,5,.35,1.7,.3,1.75,-.4,.5,.4,.45)]]
+ ULTM:[[0,PZ(.12,5,.35,1.7,.3,1.75,-.4,.5,.4,.45)],[1,PZ(.12,5,.35,1.7,.3,1.75,-.4,.5,.4,.45)]],
+ LOWP:[[0,PZ(.1,15,.8,1.9,1.0,1.7,.42,1.5,.42,1.5)],[.42,PZ(.16,15,.85,1.85,1.7,.06,.42,1.5,.42,1.5)],[1,PZ(.1,15,.8,1.9,1.0,1.7,.42,1.5,.42,1.5)]],
+ SWEEP:[[0,PZ(.1,14,.8,1.9,.9,1.7,.4,1.5,.4,1.5)],[.4,PZ(.16,18,.7,1.6,.7,1.6,1.5,.08,-.2,.4)],[1,PZ(.1,14,.8,1.9,.9,1.7,.4,1.5,.4,1.5)]],
+ DASHP:[[0,PZ(-.05,2,.8,2,.7,2,-.2,.3,.2,.16)],[.5,PZ(.34,-2,.9,1.9,2.6,.08,-.5,.3,.5,.12)],[1,PG]],
+ DIVE:[[0,PZ(.1,0,2.3,.4,-.5,.6,.9,1.6,.6,1.3)],[.4,PZ(.22,2,1.9,.5,1.0,1.5,1.4,.1,1.3,.18)],[1,PZ(.18,4,1.8,.5,.9,1.5,1.2,.2,1.1,.3)]],
+ THROW:[[0,PZ(.1,2,1.2,.4,1.2,.4,-.3,.3,.25,.14)],[.45,PZ(-.12,-2,2.2,.2,2.2,.2,-.3,.3,.3,.12)],[1,PG]]
 };
+const CROUCHP=PZ(.08,15,.82,1.9,1.0,1.65,.42,1.5,.42,1.5);
 const STUNP=PZ(-.3,2,2.0,.35,-.7,.5,-.55,.45,.4,.18);
 const BLOCKP=PZ(-.08,9,1.35,2.3,1.5,2.1,-.5,.7,.5,.65);
 const AIRUP=PZ(.1,0,2.3,.4,-.5,.6,.9,1.6,.6,1.3), AIRDN=PZ(.05,0,1.8,.5,-.3,.5,.35,.7,.15,.4);
@@ -958,6 +1031,7 @@ function getPose(f,t){
   if(f.frozenT>0)return BLOCKP;
   if(f.stun>0)return lerpA(STUNP,PG,0.15+0.15*Math.sin(t*40));
   if(f.blocking)return BLOCKP;
+  if(f.crouch&&f.onG)return CROUCHP;
   if(!f.onG)return f.vy<0?AIRUP:AIRDN;
   if(Math.abs(f.moveAmt||0)>0.8){const ph=f.walkPh||0;
     return PZ(.1,1.5*Math.abs(Math.sin(ph)),
@@ -966,56 +1040,118 @@ function getPose(f,t){
       .45*Math.sin(ph),.25+.15*Math.abs(Math.cos(ph)));}
   return lerpA(PG,PZ(.05,1.5,.8,1.95,1.1,1.55,-.28,.3,.22,.12),0.5+0.5*Math.sin(t*2.4+f.ci));
 }
+function shadeHex(hex,amt){
+  let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  if(amt>=0){r+=(255-r)*amt;g+=(255-g)*amt;b+=(255-b)*amt;}else{r*=(1+amt);g*=(1+amt);b*=(1+amt);}
+  return "#"+[r,g,b].map(v=>Math.max(0,Math.min(255,v|0)).toString(16).padStart(2,"0")).join("");
+}
 function drawBody(ci,A,H,opts){
   opts=opts||{};const P=PAL[ci],c=CHARS[ci],flat=opts.flat||null,t=opts.t||0;
   const lean=A[0],dy=A[1],saF=A[2],eaF=A[3],saN=A[4],eaN=A[5],hF=A[6],kF=A[7],hN=A[8],kN=A[9];
   const hip={x:0,y:-H*0.42+dy}, sh={x:H*0.02,y:-H*0.76+dy*0.7};
   const UA=H*0.165,FA=H*0.165,TH=H*0.215,SN=H*0.215;
   function pt(o,len,a){return {x:o.x+Math.sin(a)*len,y:o.y+Math.cos(a)*len};}
-  function limb(p1,p2,w,col){
-    ctx.lineCap="round";
-    if(!flat){ctx.strokeStyle="#161028";ctx.lineWidth=w+4;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
-    ctx.strokeStyle=flat||col;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
-  function ball(p,r,col){
-    if(!flat){ctx.fillStyle="#161028";ctx.beginPath();ctx.arc(p.x,p.y,r+2,0,7);ctx.fill();}
-    ctx.fillStyle=flat||col;ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);ctx.fill();}
-  const hipF={x:hip.x-H*0.025,y:hip.y}, hipN={x:hip.x+H*0.025,y:hip.y};
+  function quad(p1,p2,w1,w2){const dx=p2.x-p1.x,dyy=p2.y-p1.y,L=Math.hypot(dx,dyy)||1,nx=-dyy/L,ny=dx/L;
+    ctx.beginPath();ctx.moveTo(p1.x+nx*w1,p1.y+ny*w1);ctx.lineTo(p2.x+nx*w2,p2.y+ny*w2);
+    ctx.lineTo(p2.x-nx*w2,p2.y-ny*w2);ctx.lineTo(p1.x-nx*w1,p1.y-ny*w1);ctx.closePath();ctx.fill();}
+  function disc(p,r){ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);ctx.fill();}
+  function jball(p,r,base){
+    if(flat){ctx.fillStyle=flat;disc(p,r);return;}
+    const g=ctx.createRadialGradient(p.x-r*0.32,p.y-r*0.34,r*0.1,p.x,p.y,r*1.05);
+    g.addColorStop(0,shadeHex(base,.42));g.addColorStop(.55,base);g.addColorStop(1,shadeHex(base,-.42));
+    ctx.fillStyle=g;disc(p,r);}
+  // 立体肌肉段：锥形+横向圆柱光影
+  function seg(p1,p2,w1,w2,base,bulge){
+    if(flat){ctx.fillStyle=flat;quad(p1,p2,w1,w2);disc(p1,w1);disc(p2,w2);return;}
+    ctx.fillStyle="#12101e";quad(p1,p2,w1+2.4,w2+2.4);disc(p1,w1+2.4);disc(p2,w2+2.4);
+    const dx=p2.x-p1.x,dyy=p2.y-p1.y,L=Math.hypot(dx,dyy)||1,nx=-dyy/L,ny=dx/L;
+    const lite=shadeHex(base,.4),dark=shadeHex(base,-.44);
+    const g=ctx.createLinearGradient(p1.x+nx*w1,p1.y+ny*w1,p1.x-nx*w1,p1.y-ny*w1);
+    g.addColorStop(0,dark);g.addColorStop(.32,base);g.addColorStop(.46,lite);g.addColorStop(.62,base);g.addColorStop(1,dark);
+    ctx.fillStyle=g;
+    if(bulge){ // 肌肉鼓起的纺锤形
+      const mx=(p1.x+p2.x)/2,my=(p1.y+p2.y)/2,wm=Math.max(w1,w2)*bulge;
+      ctx.beginPath();ctx.moveTo(p1.x+nx*w1,p1.y+ny*w1);
+      ctx.quadraticCurveTo(mx+nx*wm,my+ny*wm,p2.x+nx*w2,p2.y+ny*w2);
+      ctx.lineTo(p2.x-nx*w2,p2.y-ny*w2);
+      ctx.quadraticCurveTo(mx-nx*wm,my-ny*wm,p1.x-nx*w1,p1.y-ny*w1);ctx.closePath();ctx.fill();
+    } else quad(p1,p2,w1,w2);
+    jball(p1,w1,base);jball(p2,w2,base);
+  }
+  function fist(p,r,base){
+    if(flat){ctx.fillStyle=flat;disc(p,r);return;}
+    jball(p,r,base);
+    ctx.strokeStyle=shadeHex(base,-.5);ctx.lineWidth=1.4;ctx.lineCap="round";
+    for(let i=-1;i<2;i++){ctx.beginPath();ctx.moveTo(p.x-r*0.55,p.y+i*r*0.32-r*0.1);ctx.lineTo(p.x+r*0.55,p.y+i*r*0.32-r*0.1);ctx.stroke();}
+  }
+  const hipF={x:hip.x-H*0.03,y:hip.y}, hipN={x:hip.x+H*0.03,y:hip.y};
   const knF=pt(hipF,TH,hF), ftF=pt(knF,SN,hF-kF);
   const knN=pt(hipN,TH,hN), ftN=pt(knN,SN,hN-kN);
-  const shF={x:sh.x-H*0.045,y:sh.y+H*0.01}, shN={x:sh.x+H*0.045,y:sh.y};
+  const shF={x:sh.x-H*0.05,y:sh.y+H*0.012}, shN={x:sh.x+H*0.05,y:sh.y};
   const elF=pt(shF,UA,saF), hdF=pt(elF,FA,saF+eaF);
   const elN=pt(shN,UA,saN), hdN=pt(elN,FA,saN+eaN);
-  // 远侧腿臂（暗色，营造层次）
-  limb(hipF,knF,H*0.075,P.pt2); limb(knF,ftF,H*0.065,P.pt2); ball(ftF,H*0.05,P.sh);
-  limb(shF,elF,H*0.07,P.jk2); limb(elF,hdF,H*0.06,P.sk2);
-  if(opts.palm)ball(hdF,H*0.055,P.sk2); else ball(hdF,H*0.055,P.gv2);
-  // 躯干道服
-  const tw=H*0.105;
-  ctx.beginPath();
-  ctx.moveTo(hip.x-tw*0.8,hip.y);ctx.quadraticCurveTo(sh.x-tw*1.15,(hip.y+sh.y)/2,sh.x-tw,sh.y-H*0.02);
-  ctx.lineTo(sh.x+tw,sh.y-H*0.02);ctx.quadraticCurveTo(hip.x+tw*1.15,(hip.y+sh.y)/2,hip.x+tw*0.8,hip.y);ctx.closePath();
-  if(!flat){ctx.strokeStyle="#161028";ctx.lineWidth=4;ctx.stroke();}
-  ctx.fillStyle=flat||P.jk;ctx.fill();
-  // 衣摆飘动
-  const fl=Math.sin(t*7+ci)*5;
-  ctx.beginPath();ctx.moveTo(hip.x-tw*0.8,hip.y);
-  ctx.quadraticCurveTo(hip.x-tw*1.7-fl,hip.y+H*0.07,hip.x-tw*1.1-fl,hip.y+H*0.13);
-  ctx.lineTo(hip.x-tw*0.3,hip.y+H*0.03);ctx.closePath();
-  ctx.fillStyle=flat||P.jk2;ctx.fill();
-  if(!flat){ // 衣领/腰带/梅字徽章
-    ctx.strokeStyle=P.jk2;ctx.lineWidth=3;
-    ctx.beginPath();ctx.moveTo(sh.x-tw*0.5,sh.y);ctx.lineTo(sh.x,sh.y+H*0.09);ctx.lineTo(sh.x+tw*0.5,sh.y);ctx.stroke();
-    ctx.fillStyle=P.belt;ctx.fillRect(hip.x-tw*0.85,hip.y-H*0.035,tw*1.7,H*0.045);
-    ctx.fillStyle="#161028";ctx.fillRect(hip.x+tw*0.15,hip.y-H*0.035,H*0.03,H*0.045);
-    ctx.fillStyle="#ffd23a";ctx.beginPath();ctx.arc(sh.x+tw*0.45,sh.y+H*0.075,H*0.036,0,7);ctx.fill();
-    ctx.fillStyle="#7a1212";ctx.font="bold "+Math.round(H*0.05)+"px 'STKaiti','KaiTi','Microsoft YaHei'";
-    ctx.textAlign="center";ctx.fillText("梅",sh.x+tw*0.45,sh.y+H*0.093);
+  // ===== 远侧腿臂（压暗推远，制造纵深）=====
+  const farPt=shadeHex(P.pt,-.26),farJk=shadeHex(P.jk,-.26),farSk=shadeHex(P.sk,-.26);
+  seg(hipF,knF,H*0.072,H*0.058,farPt,1.12); seg(knF,ftF,H*0.056,H*0.04,farPt,1.05);
+  if(!flat){ctx.fillStyle=shadeHex(P.sh,-.2);} ctx.beginPath();ctx.ellipse(ftF.x+Math.sin(hF-kF)*H*0.03,ftF.y,H*0.058,H*0.036,hF-kF,0,7);if(flat){ctx.fillStyle=flat;}ctx.fill();
+  seg(shF,elF,H*0.062,H*0.05,farJk,1.18); seg(elF,hdF,H*0.05,H*0.044,farSk,1.1);
+  if(opts.palm)fist(hdF,H*0.05,farSk); else fist(hdF,H*0.05,shadeHex(P.gv,-.26));
+  // ===== 躯干（道服，立体明暗）=====
+  const tw=H*0.112;
+  const tpath=()=>{ctx.beginPath();
+    ctx.moveTo(hip.x-tw*0.78,hip.y);
+    ctx.quadraticCurveTo(sh.x-tw*1.16,(hip.y+sh.y)/2,sh.x-tw*0.96,sh.y-H*0.015);
+    ctx.quadraticCurveTo(sh.x,sh.y-H*0.05,sh.x+tw*0.96,sh.y-H*0.015);
+    ctx.quadraticCurveTo(hip.x+tw*1.16,(hip.y+sh.y)/2,hip.x+tw*0.78,hip.y);ctx.closePath();};
+  if(!flat){ctx.fillStyle="#12101e";ctx.save();ctx.lineJoin="round";tpath();ctx.lineWidth=5;ctx.strokeStyle="#12101e";ctx.stroke();ctx.restore();}
+  if(flat){ctx.fillStyle=flat;tpath();ctx.fill();}
+  else{
+    const tg=ctx.createLinearGradient(sh.x-tw,sh.y,hip.x+tw*0.4,hip.y+H*0.05);
+    tg.addColorStop(0,shadeHex(P.jk,.28));tg.addColorStop(.5,P.jk);tg.addColorStop(1,shadeHex(P.jk,-.28));
+    ctx.fillStyle=tg;tpath();ctx.fill();
+    // 远侧暗面
+    ctx.save();tpath();ctx.clip();
+    const sg=ctx.createLinearGradient(sh.x-tw,0,sh.x+tw*0.2,0);
+    sg.addColorStop(0,"rgba(0,0,0,0)");sg.addColorStop(1,"rgba(0,0,0,.32)");
+    ctx.fillStyle=sg;ctx.fillRect(sh.x-tw*1.2,sh.y-H*0.1,tw*2.4,H*0.6);
+    // 胸肌/腹肌暗示
+    ctx.strokeStyle="rgba(0,0,0,.18)";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(sh.x-tw*0.5,sh.y+H*0.05);ctx.quadraticCurveTo(sh.x,sh.y+H*0.09,sh.x+tw*0.5,sh.y+H*0.05);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(sh.x,sh.y+H*0.02);ctx.lineTo(sh.x,hip.y-H*0.02);ctx.stroke();
+    ctx.restore();
   }
-  // 近侧腿臂（亮色）
-  limb(hipN,knN,H*0.08,P.pt); limb(knN,ftN,H*0.07,P.pt); ball(ftN,H*0.052,P.sh);
-  limb(shN,elN,H*0.075,P.jk); limb(elN,hdN,H*0.065,P.sk);
-  if(opts.palm){ball(hdN,H*0.058,P.sk);} else ball(hdN,H*0.06,P.gv);
-  // 拳脚气劲光球（跟随肢体）
+  // 衣襟交叠（V领道服）
+  if(!flat){ctx.strokeStyle=shadeHex(P.jk,-.3);ctx.lineWidth=Math.max(3,H*0.02);ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(sh.x-tw*0.55,sh.y+H*0.01);ctx.lineTo(hip.x+tw*0.1,hip.y-H*0.02);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(sh.x+tw*0.55,sh.y+H*0.01);ctx.lineTo(hip.x+tw*0.1,hip.y-H*0.02);ctx.stroke();}
+  // 衣摆（飘动，物理优先）
+  const flA=(opts.cloth&&opts.cloth.flap!==undefined)?opts.cloth.flap:Math.sin(t*7+ci)*5;
+  ctx.beginPath();ctx.moveTo(hip.x-tw*0.78,hip.y);
+  ctx.quadraticCurveTo(hip.x-tw*1.7-flA,hip.y+H*0.08,hip.x-tw*1.05-flA,hip.y+H*0.15);
+  ctx.lineTo(hip.x-tw*0.25,hip.y+H*0.04);ctx.closePath();
+  ctx.fillStyle=flat||shadeHex(P.jk,-.18);ctx.fill();
+  ctx.beginPath();ctx.moveTo(hip.x+tw*0.1,hip.y);
+  ctx.quadraticCurveTo(hip.x+tw*0.9+flA*0.6,hip.y+H*0.09,hip.x+tw*1.2+flA*0.6,hip.y+H*0.13);
+  ctx.lineTo(hip.x+tw*0.55,hip.y+H*0.03);ctx.closePath();
+  ctx.fillStyle=flat||shadeHex(P.jk,-.3);ctx.fill();
+  // 腰带 + 梅徽
+  if(!flat){
+    const bg=ctx.createLinearGradient(0,hip.y-H*0.04,0,hip.y+H*0.015);
+    bg.addColorStop(0,shadeHex(P.belt,.35));bg.addColorStop(1,shadeHex(P.belt,-.2));
+    ctx.fillStyle=bg;ctx.fillRect(hip.x-tw*0.85,hip.y-H*0.04,tw*1.7,H*0.05);
+    ctx.fillStyle="#161028";ctx.fillRect(hip.x+tw*0.12,hip.y-H*0.04,H*0.032,H*0.05);
+    const mg=ctx.createRadialGradient(sh.x+tw*0.4-3,sh.y+H*0.05,2,sh.x+tw*0.42,sh.y+H*0.07,H*0.04);
+    mg.addColorStop(0,"#fff0a8");mg.addColorStop(.6,"#ffd23a");mg.addColorStop(1,"#c98a10");
+    ctx.fillStyle=mg;ctx.beginPath();ctx.arc(sh.x+tw*0.42,sh.y+H*0.07,H*0.038,0,7);ctx.fill();
+    ctx.fillStyle="#7a1212";ctx.font="bold "+Math.round(H*0.05)+"px 'STKaiti','KaiTi','Microsoft YaHei'";
+    ctx.textAlign="center";ctx.fillText("梅",sh.x+tw*0.42,sh.y+H*0.088);
+  }
+  // ===== 近侧腿臂（亮面，肌肉鼓起）=====
+  seg(hipN,knN,H*0.082,H*0.064,P.pt,1.14); seg(knN,ftN,H*0.064,H*0.046,P.pt,1.06);
+  ctx.fillStyle=flat||P.sh;ctx.beginPath();ctx.ellipse(ftN.x+Math.sin(hN-kN)*H*0.032,ftN.y,H*0.062,H*0.038,hN-kN,0,7);ctx.fill();
+  seg(shN,elN,H*0.07,H*0.055,P.jk,1.22); seg(elN,hdN,H*0.055,H*0.048,P.sk,1.12);
+  if(opts.palm)fist(hdN,H*0.054,P.sk); else fist(hdN,H*0.06,P.gv);
+  // 拳脚气劲光球
   if(opts.glow&&!flat){
     const gp=opts.glow.kick?ftN:(opts.glow.far?hdF:hdN);
     const r=opts.glow.r||H*0.12;
@@ -1023,25 +1159,35 @@ function drawBody(ci,A,H,opts){
     grd.addColorStop(0,"#fff");grd.addColorStop(.5,c.spark);grd.addColorStop(1,c.glow+"0)");
     ctx.fillStyle=grd;ctx.beginPath();ctx.arc(gp.x,gp.y,r,0,7);ctx.fill();
   }
-  if(opts.palm&&!flat){ // 双掌推气
+  if(opts.palm&&!flat){
     const grd=ctx.createRadialGradient(hdN.x,hdN.y,3,hdN.x,hdN.y,H*0.18);
     grd.addColorStop(0,"#fff");grd.addColorStop(.5,c.spark);grd.addColorStop(1,c.glow+"0)");
     ctx.fillStyle=grd;ctx.beginPath();ctx.arc(hdN.x,hdN.y,H*0.18,0,7);ctx.fill();
   }
-  // 头：真人头像 + 头带飘带
-  const hr=H*0.148, hc={x:sh.x+lean*H*0.12+H*0.02,y:sh.y-hr*1.12};
-  if(!flat){ctx.fillStyle="#161028";ctx.beginPath();ctx.arc(hc.x,hc.y,hr+2.5,0,7);ctx.fill();}
+  // ===== 脖子 + 头 =====
+  const hr=H*0.15, hc={x:sh.x+lean*H*0.12+H*0.02,y:sh.y-hr*1.16};
+  if(!flat){seg({x:sh.x,y:sh.y-H*0.02},{x:hc.x,y:hc.y+hr*0.5},H*0.04,H*0.038,P.sk);}
+  if(!flat){ctx.fillStyle="#12101e";ctx.beginPath();ctx.arc(hc.x,hc.y,hr+2.5,0,7);ctx.fill();}
   if(!flat&&c.face&&c.face.complete&&c.face.naturalWidth){
     ctx.save();ctx.beginPath();ctx.arc(hc.x,hc.y,hr,0,7);ctx.clip();
-    ctx.drawImage(c.face,hc.x-hr,hc.y-hr,hr*2,hr*2);ctx.restore();
+    ctx.drawImage(c.face,hc.x-hr,hc.y-hr,hr*2,hr*2);
+    // 面部受光
+    const fg=ctx.createRadialGradient(hc.x-hr*0.4,hc.y-hr*0.5,hr*0.2,hc.x,hc.y,hr*1.2);
+    fg.addColorStop(0,"rgba(255,250,235,.22)");fg.addColorStop(.6,"rgba(255,255,255,0)");fg.addColorStop(1,"rgba(0,0,0,.34)");
+    ctx.fillStyle=fg;ctx.beginPath();ctx.arc(hc.x,hc.y,hr,0,7);ctx.fill();ctx.restore();
   } else {ctx.fillStyle=flat||P.sk;ctx.beginPath();ctx.arc(hc.x,hc.y,hr,0,7);ctx.fill();}
   if(!flat){
     ctx.strokeStyle=c.main;ctx.lineWidth=3;ctx.beginPath();ctx.arc(hc.x,hc.y,hr,0,7);ctx.stroke();
-    ctx.fillStyle=P.band;ctx.fillRect(hc.x-hr,hc.y-hr*0.66,hr*2,hr*0.3);
+    // 头带
+    const bg=ctx.createLinearGradient(hc.x-hr,hc.y-hr*0.66,hc.x-hr,hc.y-hr*0.36);
+    bg.addColorStop(0,shadeHex(P.band,.3));bg.addColorStop(1,shadeHex(P.band,-.25));
+    ctx.fillStyle=bg;ctx.fillRect(hc.x-hr,hc.y-hr*0.66,hr*2,hr*0.3);
     ctx.fillStyle="#ffd23a";ctx.beginPath();ctx.arc(hc.x+hr*0.45,hc.y-hr*0.5,hr*0.12,0,7);ctx.fill();
-    ctx.strokeStyle=P.band;ctx.lineWidth=Math.max(3,H*0.034);ctx.lineCap="round";
-    const rb=Math.sin(t*8+ci)*6;
+    // 头带飘带（物理优先）
+    ctx.strokeStyle=P.band;ctx.lineWidth=Math.max(3,H*0.032);ctx.lineCap="round";
+    const rb=(opts.cloth&&opts.cloth.band!==undefined)?opts.cloth.band:Math.sin(t*8+ci)*6;
     ctx.beginPath();ctx.moveTo(hc.x-hr*0.9,hc.y-hr*0.5);ctx.quadraticCurveTo(hc.x-hr*1.9,hc.y-hr*0.2+rb,hc.x-hr*2.4,hc.y+rb*1.4);ctx.stroke();
+    ctx.strokeStyle=shadeHex(P.band,-.2);
     ctx.beginPath();ctx.moveTo(hc.x-hr*0.9,hc.y-hr*0.42);ctx.quadraticCurveTo(hc.x-hr*1.7,hc.y+rb,hc.x-hr*2.1,hc.y+hr*0.5+rb);ctx.stroke();
   }
 }
@@ -1059,10 +1205,25 @@ function drawFighter(f){
     sclX=1+0.05*atkPulse;}
   else if(f.stun>0){rot=Math.sin(t*40)*0.03;}
   else if(!f.onG){rot=0.06;}
+  rot+=(f.hitLean||0);
+  if(f.landSquash>0){const k=f.landSquash/140;sclX*=1+0.18*k;sclY*=1-0.18*k;}
+  else if(!f.onG){const st=Math.max(-0.16,Math.min(0.16,-f.vy*0.012));sclY*=1+st;sclX*=1-st*0.6;}
   const A=getPose(f,t);
   const x=f.x+f.facing*lungeX, y=f.y;
-  // 影子
-  ctx.fillStyle="rgba(0,0,0,.32)";ctx.beginPath();ctx.ellipse(f.x,GROUND+4,H*0.3,8,0,0,7);ctx.fill();
+  const air=Math.max(0,(GROUND-f.y));
+  const shScale=Math.max(0.4,1-air/260), shAlpha=0.34*shScale;
+  ctx.fillStyle="rgba(0,0,0,"+shAlpha.toFixed(3)+")";
+  ctx.beginPath();ctx.ellipse(f.x,GROUND+4,H*0.3*shScale,9*shScale,0,0,7);ctx.fill();
+  // 角色对地面投射的彩色光（满气/绝招/施法时）
+  let lightCol=null;
+  if(mv&&(f.atkType==="CAST"||f.atkType==="SHO"||f.atkType==="SPIN"||f.atkType==="ULTM"))lightCol=c.main;
+  else if(f.en>=100&&!f.koT)lightCol=c.main;
+  if(f.burnT>0)lightCol="#ff6a2a"; else if(f.frozenT>0)lightCol="#5bd9ff";
+  if(lightCol&&!f.koT){const lg=ctx.createRadialGradient(f.x,GROUND+2,2,f.x,GROUND+2,H*0.42);
+    lg.addColorStop(0,lightCol);lg.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.save();ctx.globalCompositeOperation="screen";ctx.globalAlpha=0.32+0.12*Math.sin(t*7);
+    ctx.fillStyle=lg;ctx.beginPath();ctx.ellipse(f.x,GROUND+2,H*0.42,13,0,0,7);ctx.fill();ctx.restore();ctx.globalAlpha=1;}
+  const cloth={flap:f.flapX,band:f.bandX};
   ctx.save();ctx.translate(x,y);
   ctx.scale(f.facing*sclX,sclY);
   ctx.rotate(A[0]*0.55+rot);
@@ -1074,11 +1235,16 @@ function drawFighter(f){
   let glow=null,palm=false;
   if(mv&&atkPulse>0.35){
     if(f.atkType==="CAST")palm=true;
-    else if(f.atkType==="KK"||f.atkType==="SPIN")glow={kick:true,r:H*0.13};
-    else if(f.atkType==="LP2"||f.atkType==="HP")glow={far:true,r:(f.atkType==="HP")?H*0.16:H*0.11};
-    else if(f.atkType!=="ULTM")glow={r:(f.atkType==="LP3")?H*0.14:H*0.11};
+    else if(f.atkType==="KK"||f.atkType==="SPIN"||f.atkType==="SWEEP"||f.atkType==="DIVE")glow={kick:true,r:H*0.13};
+    else if(f.atkType==="LP2"||f.atkType==="HP"||f.atkType==="DASHP")glow={far:true,r:(f.atkType==="HP"||f.atkType==="DASHP")?H*0.16:H*0.11};
+    else if(f.atkType!=="ULTM"&&f.atkType!=="THROW")glow={r:(f.atkType==="LP3")?H*0.14:H*0.11};
   }
-  drawBody(f.ci,A,H,{t,glow,palm});
+  // 绝招/施法轮廓光
+  if(mv&&(f.atkType==="SHO"||f.atkType==="SPIN"||f.atkType==="CAST"||f.atkType==="DASHP"||f.atkType==="ULTM")){
+    ctx.save();ctx.shadowColor=c.main;ctx.shadowBlur=22;ctx.globalAlpha=0.5;
+    drawBody(f.ci,A,H,{flat:c.spark,t});ctx.restore();ctx.globalAlpha=1;
+  }
+  drawBody(f.ci,A,H,{t,glow,palm,cloth});
   // 受击红闪/灼烧/冰冻/大招白闪 —— 同姿势剪影叠加
   if(f.hurtT>0){ctx.globalAlpha=Math.min(0.7,f.hurtT/240);drawBody(f.ci,A,H,{flat:"#ff4438",t});ctx.globalAlpha=1;}
   if(f.burnT>0){ctx.globalAlpha=0.22+0.16*Math.sin(t*18);drawBody(f.ci,A,H,{flat:"#ff5a2a",t});ctx.globalAlpha=1;}
@@ -1210,6 +1376,13 @@ function draw(){
     else if(p.t==="d"){ctx.font=(p.crit?"bold 30px":"bold 19px")+" 'Microsoft YaHei'";ctx.fillStyle=p.crit?"#ffd23a":"#ff5a3a";ctx.textAlign="center";ctx.globalAlpha=Math.max(0,p.life/780);ctx.fillText(p.v,p.x,p.y);ctx.globalAlpha=1;}
     else if(p.t==="s"){ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.globalAlpha=Math.max(0,p.life/660);ctx.fillStyle=p.col;drawStarShape(0,0,5,8,3.5);ctx.restore();ctx.globalAlpha=1;}
     else if(p.t==="u"){ctx.fillStyle="rgba(180,170,160,"+Math.max(0,p.life/380)*0.6+")";ctx.beginPath();ctx.arc(p.x,p.y,5,0,7);ctx.fill();}
+    else if(p.t==="fl"){const a=Math.max(0,p.life/(p.max||190)),r=p.r*(1.45-a*0.45);
+      const g=ctx.createRadialGradient(p.x,p.y,1,p.x,p.y,r);
+      g.addColorStop(0,"rgba(255,255,255,"+a+")");g.addColorStop(.42,p.col);g.addColorStop(1,"rgba(10,8,20,0)");
+      ctx.globalAlpha=a;ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);ctx.fill();
+      ctx.strokeStyle="rgba(255,255,255,"+a+")";ctx.lineWidth=2.4*a+0.4;
+      ctx.beginPath();ctx.moveTo(p.x-r,p.y);ctx.lineTo(p.x+r,p.y);ctx.moveTo(p.x,p.y-r*0.82);ctx.lineTo(p.x,p.y+r*0.82);ctx.stroke();
+      ctx.globalAlpha=1;}
     else if(p.t==="sl"){const a=Math.max(0,p.life/240);ctx.strokeStyle=p.col;ctx.globalAlpha=a;ctx.lineWidth=5*a+1;
       ctx.beginPath();ctx.moveTo(p.x-30*p.dir,p.y+26);ctx.lineTo(p.x+34*p.dir,p.y-26);ctx.stroke();ctx.globalAlpha=1;}
     else if(p.t==="lt"){const a=Math.max(0,p.life/300);ctx.globalAlpha=a;
@@ -1218,6 +1391,11 @@ function draw(){
       const segs=6;for(let s2=1;s2<=segs;s2++){zy=p.y1+(p.y2-p.y1)*s2/segs;zx=p.x+Math.sin(p.seed*7+s2*3.7)*22*(s2<segs?1:0);ctx.lineTo(zx,zy);}
       ctx.stroke();ctx.strokeStyle="#fff";ctx.lineWidth=2*a+0.5;ctx.stroke();ctx.shadowBlur=0;ctx.globalAlpha=1;}
   }
+  if(tint&&tint.life>0){const a=tint.peak*Math.max(0,tint.life/tint.max);
+    ctx.save();ctx.globalCompositeOperation="screen";ctx.globalAlpha=a;
+    const g=ctx.createRadialGradient(VW/2,VH*0.46,VH*0.18,VW/2,VH*0.5,VW*0.72);
+    g.addColorStop(0,tint.col);g.addColorStop(1,"#000010");
+    ctx.fillStyle=g;ctx.fillRect(0,0,VW,VH);ctx.restore();ctx.globalAlpha=1;}
   if(me&&foe)drawHUD();
   drawCine();
   if(bann){
